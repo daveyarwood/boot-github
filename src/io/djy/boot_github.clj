@@ -144,14 +144,17 @@
             (println "Release description:")
             (println)
             (println body)
-            (doseq [file files]
-              (let [{:keys [id browser_download_url] :as response}
-                    (upload-asset upload_url file)]
-                (if id
-                  (util/info "Asset uploaded: %s\n" browser_download_url)
-                  (do
-                    (util/fail "Failed to upload %s. API response:\n")
-                    (pprint response))))))
+            (when-not (empty? files)
+              (println)
+              (util/info "Uploading assets...\n")
+              (doseq [file files]
+                (let [{:keys [id browser_download_url] :as response}
+                      (upload-asset upload_url file)]
+                  (if id
+                    (util/info "Asset uploaded: %s\n" browser_download_url)
+                    (do
+                      (util/fail "Failed to upload %s. API response:\n")
+                      (pprint response)))))))
           (do
             (util/fail "Failed to create release. API response:\n")
             (pprint response)))))))
