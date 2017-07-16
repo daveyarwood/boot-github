@@ -9,7 +9,7 @@
 
 (require '[adzerk.bootlaces :refer :all])
 
-(def ^:const +version+ "0.1.0")
+(def ^:const +version+ "0.1.1")
 
 (task-options!
   pom {:project     'io.djy/boot-github
