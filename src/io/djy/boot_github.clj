@@ -64,7 +64,7 @@
        (re-find #"github.com[:/](.*)/(.*).git")
        rest))
 
-(defn- create-release
+(defn- create-release*
   [version description]
   (let [[user repo] (current-github-repo)]
     (util/info "Creating release for %s...\n" version)
@@ -111,10 +111,10 @@
 
 (boot/deftask create-release
   "Creates a new release via the GitHub API."
-  [v version     VERSION   str    "The version to release."
-   d description DESC      str    "A description of the release."
-   c changelog   CHANGELOG bool   "Use the changes for this version in the CHANGELOG as a description."
-   a assets      ASSETS    #{str} "Assets to upload and include with this release."]
+  [v version     VERSION str    "The version to release."
+   d description DESC    str    "A description of the release."
+   c changelog           bool   "Use the changes for this version in the CHANGELOG as a description."
+   a assets      ASSETS  #{str} "Assets to upload and include with this release."]
   (assert (repo-clean?) "You have uncommitted changes. Aborting.")
   (boot/with-pass-thru _
     (let [description (cond
@@ -136,7 +136,7 @@
                                                          (.getName %)))))
                                   assets))]
       (let [{:keys [id html_url upload_url body] :as response}
-            (create-release version description)]
+            (create-release* version description)]
         (if id ; if JSON result contains an "id" field, then it was successful
           (do
             (util/info "Release published: %s\n" html_url)
