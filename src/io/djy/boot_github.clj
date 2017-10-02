@@ -12,8 +12,6 @@
             [instaparse.core    :as    insta]
             [tentacles.repos    :as    repos]))
 
-(env/def GITHUB_TOKEN :required)
-
 (defn- repo-clean?
   []
   (-> (sh/sh "git" "status" "--porcelain") :out empty?))
@@ -65,10 +63,10 @@
        rest))
 
 (defn- create-release*
-  [version description]
+  [github-token version description]
   (let [[user repo] (current-github-repo)]
     (util/info "Creating release for %s...\n" version)
-    (repos/create-release user repo {:oauth-token GITHUB_TOKEN
+    (repos/create-release user repo {:oauth-token github-token
                                      :tag_name    version
                                      :name        version
                                      :body        description})))
@@ -85,7 +83,7 @@
                              ["--data-binary" (str "@" data-binary)]))))
 
 (defn- upload-asset
-  [upload-url file]
+  [github-token upload-url file]
   (let [;; The "upload_url" from the GitHub API response is a hypermedia
         ;; relation. In this case, we want to turn {?name,label} into
         ;; ?name=foop.txt (or whatever our file asset is called)
@@ -94,7 +92,7 @@
                          (format "?name=%s" (.getName file)))]
     ;; We have to shell out use cURL for this because clj-http doesn't appear to
     ;; support SNI, which the GitHub API requires in order to upload assets.
-    (-> (curl {:headers     {"Authorization" (str "token " GITHUB_TOKEN)
+    (-> (curl {:headers     {"Authorization" (str "token " github-token)
                              "Content-Type"  "application/octet-stream"}
                :method      "POST"
                :data-binary (.getAbsolutePath file)}
@@ -111,51 +109,58 @@
 
 (boot/deftask create-release
   "Creates a new release via the GitHub API."
-  [v version     VERSION str    "The version to release."
-   d description DESC    str    "A description of the release."
-   c changelog           bool   "Use the changes for this version in the CHANGELOG as a description."
-   a assets      ASSETS  #{str} "Assets to upload and include with this release."]
+  [v version      VERSION str    "The version to release."
+   d description  DESC    str    "A description of the release."
+   c changelog            bool   "Use the changes for this version in the CHANGELOG as a description."
+   a assets       ASSETS  #{str} "Assets to upload and include with this release."
+   g github-token TOKEN   str    "The GitHub API token to use. (defaults to the value of the environment variable GITHUB_TOKEN)"]
   (assert (repo-clean?) "You have uncommitted changes. Aborting.")
   (boot/with-pass-thru _
-    (let [description (cond
-                        (and changelog description)
-                        (throw (Exception. (str "Task options can include "
-                                                "--description OR --changelog, "
-                                                "not both.")))
+    (let [github-token (or github-token (System/getenv "GITHUB_TOKEN"))
+          _            (assert
+                         github-token
+                         (str "You must provide a GitHub API token via the "
+                              "--github-token option or GITHUB_TOKEN "
+                              "environment variable."))
+          description  (cond
+                         (and changelog description)
+                         (throw (Exception. (str "Task options can include "
+                                                 "--description OR --changelog, "
+                                                 "not both.")))
 
-                        changelog
-                        (doto (changelog-for version)
-                          (assert (format "Missing changelog for version %s."
-                                          version)))
+                         changelog
+                         (doto (changelog-for version)
+                           (assert (format "Missing changelog for version %s."
+                                           version)))
 
-                        :else
-                        (or description ""))
-          files       (doall (map #(doto (io/file %)
-                                     (-> .exists
-                                         (assert (format "File not found: %s"
-                                                         (.getName %)))))
-                                  assets))]
-      (let [{:keys [id html_url upload_url body] :as response}
-            (create-release* version description)]
-        (if id ; if JSON result contains an "id" field, then it was successful
-          (do
-            (util/info "Release published: %s\n" html_url)
+                         :else
+                         (or description ""))
+          files        (doall (map #(doto (io/file %)
+                                      (-> .exists
+                                          (assert (format "File not found: %s"
+                                                          (.getName %)))))
+                                   assets))
+          {:keys [id html_url upload_url body] :as response}
+          (create-release* github-token version description)]
+      (if id ; if JSON result contains an "id" field, then it was successful
+        (do
+          (util/info "Release published: %s\n" html_url)
+          (println)
+          (println "Release description:")
+          (println)
+          (println body)
+          (when-not (empty? files)
             (println)
-            (println "Release description:")
-            (println)
-            (println body)
-            (when-not (empty? files)
-              (println)
-              (util/info "Uploading assets...\n")
-              (doseq [file files]
-                (let [{:keys [id browser_download_url] :as response}
-                      (upload-asset upload_url file)]
-                  (if id
-                    (util/info "Asset uploaded: %s\n" browser_download_url)
-                    (do
-                      (util/fail "Failed to upload %s. API response:\n")
-                      (pprint response)))))))
-          (do
-            (util/fail "Failed to create release. API response:\n")
-            (pprint response)))))))
+            (util/info "Uploading assets...\n")
+            (doseq [file files]
+              (let [{:keys [id browser_download_url] :as response}
+                    (upload-asset github-token upload_url file)]
+                (if id
+                  (util/info "Asset uploaded: %s\n" browser_download_url)
+                  (do
+                    (util/fail "Failed to upload %s. API response:\n")
+                    (pprint response)))))))
+        (do
+          (util/fail "Failed to create release. API response:\n")
+          (pprint response))))))
 
