@@ -1,5 +1,10 @@
 # CHANGELOG
 
+## 0.1.4 (2018-01-29)
+
+* Fixed a bug in the code in the assertion that a file to be used as an asset
+  exists. ([#1](https://github.com/daveyarwood/boot-github/issues/1))
+
 ## 0.1.3 (2017-10-02)
 
 * Before this release, simply requiring the `io.djy.boot-github` namespace would

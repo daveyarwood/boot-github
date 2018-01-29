@@ -138,7 +138,7 @@
           files        (doall (map #(doto (io/file %)
                                       (-> .exists
                                           (assert (format "File not found: %s"
-                                                          (.getName %)))))
+                                                          %))))
                                    assets))
           {:keys [id html_url upload_url body] :as response}
           (create-release* github-token version description)]
